@@ -8,6 +8,8 @@
 
 **검색 기능 : `Ctrl`+`F`**
 
+**[[원본글](https://arca.live/b/akendfield/177104489)]**
+
 - AI 활용해서 깃허브에서 설정 시간마다 자동으로 출석 시도 하도록 바꾼 버전입니다.
 - **출석 시간 설정** 방법은 **맨 아래** [[#5. 출석 시간 설정](https://github.com/Jip-Ga/SKPORT-Auto-Signin/blob/main/README.md#5-출석-시간-설정)] 을 참고하시면 됩니다.
 - 계정 여러 개 등록해서 사용 가능합니다.

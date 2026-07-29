@@ -3,8 +3,6 @@
  * ║   🪐 엔드필드 자동 출석 시스템 (GitHub Actions 버전)   ║
  * ╚══════════════════════════════════════════════════════╝
  * 원본(Google Apps Script) : https://arca.live/b/akendfield/177104489
- * 이 버전은 GitHub Actions에서 돌아가도록 Node.js로 변환한 버전입니다.
- * 계정 정보는 코드에 직접 넣지 않고 GitHub Secrets에서 불러옵니다.
  */
 
 import fetch from "node-fetch";
@@ -16,31 +14,6 @@ import fs from "fs";
  * [설정 불러오기]
  * =========================================================================
  * 모든 값을 GitHub Secret "ENDFIELD_CONFIG" 하나에 JSON으로 등록해서 사용합니다.
- * 계정을 여러 개 등록할 수 있고, 디스코드 관련 값(웹훅 URL/이름/프로필 이미지)이
- * 빈칸인 계정은 자동으로 "마지막에 값이 채워진 계정"의 값을 가져다 씁니다.
- *
- * {
- *   "ACCOUNTS": [
- *     {
- *       "accountToken": "계정1 로그인 쿠키값",
- *       "accountName": "계정1 닉네임",
- *       "skGameRole": "계정1 인겜 UID",
- *       "serverId": "2",
- *       "discordWebhook": "디스코드 웹훅 URL",
- *       "discordWebhookAvatarUrl": "웹훅 프로필 이미지 URL",
- *       "discordWebhookName": "웹훅 이름"
- *     },
- *     {
- *       "accountToken": "계정2 로그인 쿠키값",
- *       "accountName": "계정2 닉네임",
- *       "skGameRole": "계정2 인겜 UID",
- *       "serverId": "2",
- *       "discordWebhook": "",
- *       "discordWebhookAvatarUrl": "",
- *       "discordWebhookName": ""
- *     }
- *   ]
- * }
  */
 function loadConfig() {
   const raw = process.env.ENDFIELD_CONFIG;

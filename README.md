@@ -264,9 +264,9 @@ PC 화면에서만 웹후크 생성이 가능합니다.
 
 <summary> 『필수사항』 </summary>
 
-- **수동 테스트 : **`⑂ Fork`** 로 복사된 본인 저장소의 `▶️Actions` 상단 탭 → `HoYoLab 자동 출석 (아무거나)` → `Run workflow ▼` → `Run workflow`**
+- **수동 테스트 : **`⑂ Fork`** 로 복사된 본인 저장소의 `▶️Actions` 상단 탭 → `SKPORT 자동 출석 (아무거나)` → `Run workflow ▼` → `Run workflow`**
     - **`▶️Actions`** 탭에서 실행 로그 확인 가능.
-    - <img width="300" height="173" alt="image" src="https://github.com/user-attachments/assets/c0af957e-83af-4066-9601-3faf8a12f95b" />
+    - <img width="300" height="169" alt="image" src="https://github.com/user-attachments/assets/a3a5af77-7ac3-4c88-a862-c61c6b871646" />
       <img width="300" height="156" alt="image" src="https://github.com/user-attachments/assets/e21543a5-1952-4673-a23e-f9bcfd6cd62b" />
 
 </details>

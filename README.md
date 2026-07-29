@@ -31,10 +31,9 @@
 
 <summary> 〔 디스코드 핸드폰 알림 〕 </summary>
 
-- 각각 다른 채널의 웹훅 사용 시 알림이 분리돼서 옵니다.
-    - 아래 사진은 1개의 채널에서 웹훅 2개를 사용함.
+- 계정 여러 개 사용 시 다른 채널의 웹훅 사용하면 알림이 분리돼서 옵니다.
 
-폰 알림 사진 추가 width="500"
+<img width="500" height="375" alt="20260730_064105" src="https://github.com/user-attachments/assets/97bd1283-cffa-44d3-81a1-2c1a9dae8777" />
 
 </details>
 
@@ -43,10 +42,10 @@
 
 <summary> 〔 성공 결과 디스코드 전송 〕 </summary>
 
-- **`이미 오늘 출석 완료 ✅`** 메시지는 수동 실행으로만 디스코드로 보내집니다.
+- **`이미 출석 완료`** 메시지는 수동 실행으로만 디스코드로 보내집니다.
 
-<img width="507" height="358" alt="스크린샷 2026-07-29 190149" src="https://github.com/user-attachments/assets/7c57f858-ef58-446e-b7b8-0bfdc4320ac5" />
-<img width="498" height="355" alt="스크린샷 2026-07-29 190201" src="https://github.com/user-attachments/assets/472d25e4-5363-4032-9735-fbc9e562e58f" />
+<img width="500" height="353" alt="스크린샷 2026-07-29 190149" src="https://github.com/user-attachments/assets/7c57f858-ef58-446e-b7b8-0bfdc4320ac5" />
+<img width="500" height="356" alt="스크린샷 2026-07-29 190201" src="https://github.com/user-attachments/assets/472d25e4-5363-4032-9735-fbc9e562e58f" />
 
 
 </details>
@@ -56,10 +55,11 @@
 
 <summary> 〔 실패 결과 디스코드 전송 〕 </summary>
 
-- 실패 시 실패 이유가(쿠키 만료, API 오류, 조회 불가 등등) 작성 되어 나옵니다.
+- 실패 시 실패 이유가(토큰 만료, API 오류, 조회 불가 등등) 작성 되어 나옵니다.
 
-실패 로그 사진 추가 width="1000"
-실패 디코 사진 추가 width="500"
+<img width="1000" height="463" alt="스크린샷 2026-07-30 065049" src="https://github.com/user-attachments/assets/7b5fddd2-a4e0-4c7a-886e-063796532f87" />
+
+<img width="300" height="275" alt="스크린샷 2026-07-30 064621" src="https://github.com/user-attachments/assets/9ce7bc69-cce9-4f2b-9c16-567bb466c1d6" />
 
 
 </details>

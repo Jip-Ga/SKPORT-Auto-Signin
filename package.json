@@ -1,0 +1,13 @@
+{
+  "name": "endfield-checkin",
+  "version": "1.0.0",
+  "description": "엔드필드 자동 출석 체크 (GitHub Actions)",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "node-fetch": "^3.3.2"
+  }
+}

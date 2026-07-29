@@ -1,6 +1,6 @@
 # SKPORT 자동 출석 (GitHub 버전)
 
-#### 현재 "명일방주: 엔드필드"만 지원합니다.
+### 현재 "명일방주: 엔드필드"만 지원합니다.
 
 **기능 업데이트 :** `2026-07-29`
 
@@ -161,13 +161,13 @@ PC 화면에서만 웹후크 생성이 가능합니다.
 {
   "ACCOUNTS": [
     {
-      "accountToken": "계정1의 로그인 토큰값",
-      "accountName": "계정1의 닉네임",
-      "skGameRole": "계정1의 인겜 UID",
-      "serverId": "2",
-      "discordWebhook": "디스코드 웹훅 URL",
-      "discordWebhookAvatarUrl": "웹훅 프로필 이미지 URL",
-      "discordWebhookName": "웹훅 이름"
+      "accountToken" : "계정1의 로그인 토큰값",
+      "accountName" : "계정1의 닉네임",
+      "skGameRole" : "계정1의 인겜 UID",
+      "serverId" : "2",
+      "discordWebhook" : "디스코드 웹훅 URL",
+      "discordWebhookAvatarUrl" : "웹훅 프로필 이미지 URL",
+      "discordWebhookName" : "웹훅 이름"
     }
   ]
 }
@@ -179,22 +179,22 @@ PC 화면에서만 웹후크 생성이 가능합니다.
 {
   "ACCOUNTS": [
     {
-      "accountToken": "계정1의 로그인 토큰값",
-      "accountName": "계정1의 닉네임",
-      "skGameRole": "계정1의 인겜 UID",
-      "serverId": "2",
-      "discordWebhook": "계정1의 디스코드 웹훅 URL",
-      "discordWebhookAvatarUrl": "계정1의 웹훅 프로필 이미지 URL",
-      "discordWebhookName": "계정1의 웹훅 이름"
+      "accountToken" : "계정1의 로그인 토큰값",
+      "accountName" : "계정1의 닉네임",
+      "skGameRole" : "계정1의 인겜 UID",
+      "serverId" : "2",
+      "discordWebhook" : "계정1의 디스코드 웹훅 URL",
+      "discordWebhookAvatarUrl" : "계정1의 웹훅 프로필 이미지 URL",
+      "discordWebhookName" : "계정1의 웹훅 이름"
     }
     ,{
-      "accountToken": "계정2의 로그인 토큰값",
-      "accountName": "계정2의 닉네임",
-      "skGameRole": "계정2의 인겜 UID",
-      "serverId": "2",
-      "discordWebhook": "계정2의 디스코드 웹훅 URL",
-      "discordWebhookAvatarUrl": "계정2의 웹훅 프로필 이미지 URL",
-      "discordWebhookName": "계정2의 웹훅 이름"
+      "accountToken" : "계정2의 로그인 토큰값",
+      "accountName" : "계정2의 닉네임",
+      "skGameRole" : "계정2의 인겜 UID",
+      "serverId" : "2",
+      "discordWebhook" : "계정2의 디스코드 웹훅 URL",
+      "discordWebhookAvatarUrl" : "계정2의 웹훅 프로필 이미지 URL",
+      "discordWebhookName" : "계정2의 웹훅 이름"
     }
   ]
 }
@@ -207,13 +207,13 @@ PC 화면에서만 웹후크 생성이 가능합니다.
 
 ```json
     ,{
-      "accountToken": "로그인 토큰값",
-      "accountName": "닉네임",
-      "skGameRole": "인겜 UID",
-      "serverId": "2",
-      "discordWebhook": "디스코드 웹훅 URL",
-      "discordWebhookAvatarUrl": "웹훅 프로필 이미지 URL",
-      "discordWebhookName": "웹훅 이름"
+      "accountToken" : "로그인 토큰값",
+      "accountName" : "닉네임",
+      "skGameRole" : "인겜 UID",
+      "serverId" : "2",
+      "discordWebhook" : "디스코드 웹훅 URL",
+      "discordWebhookAvatarUrl" : "웹훅 프로필 이미지 URL",
+      "discordWebhookName" : "웹훅 이름"
     }
 ```
 
@@ -222,10 +222,9 @@ PC 화면에서만 웹후크 생성이 가능합니다.
 
 ## #3-1. 코드 설명 -『필수 입력』
 
-- "accountToken" = 
-- "skGameRole"
-- **`"LTUID"`** = **`ltuid_v2`** `(유저 고유 ID)` ([[#2. 쿠키 값 얻기](https://github.com/Jip-Ga/HoYoLAB-Auto-Checkin/blob/main/README.md#2-쿠키-값-얻기-메모장-작성-추천)] 참고)
-- **`"LTOKEN"`** = **`ltoken_v2`** `(로그인 쿠키값)` ([[#2. 쿠키 값 얻기](https://github.com/Jip-Ga/HoYoLAB-Auto-Checkin/blob/main/README.md#2-쿠키-값-얻기-메모장-작성-추천)] 참고)
+- **`"accountToken"`** = **`ACCOUNT_TOKEN`** `(로그인 토큰값)` ([[#2. 쿠키 값 얻기](https://github.com/Jip-Ga/HoYoLAB-Auto-Checkin/blob/main/README.md#2-쿠키-값-얻기-메모장-작성-추천)] 참고)
+- **`"skGameRole"`** = 엔드필드 UID
+- **`"serverId"`** = 2(아시아 서버)
 
 
 ## #3-2. 코드 설명 -『선택사항』
@@ -233,11 +232,11 @@ PC 화면에서만 웹후크 생성이 가능합니다.
 **미사용 시 입력 :**
 
 ```json
+"accountName" : ""
 
-"NAME" : ""
-"AVATAR" : ""
-"DISCORD_WEBHOOK" : ""
-
+"discordWebhook" : ""
+"discordWebhookAvatarUrl" : ""
+"discordWebhookName" : ""
 ```
 
 값이 비어 있을 시 가장 마지막에 입력된 값으로 사용 됩니다.

@@ -9,6 +9,7 @@
 
 import fetch from "node-fetch";
 import crypto from "crypto";
+import fs from "fs";
 
 /**
  * =========================================================================
@@ -356,8 +357,12 @@ async function main() {
   );
 
   let hasFailure = false;
+  let hasNewSuccess = false; // "출석 성공 (보상 수령됨)"이 하나라도 있으면 true
   // 같은 웹훅에 프로필(이름/아바타) 패치를 중복으로 여러 번 보내지 않기 위한 기록
   const patchedWebhooks = new Set();
+
+  // 수동 실행(workflow_dispatch)인지 여부 (GitHub Actions가 자동으로 넣어주는 값)
+  const isManualRun = process.env.GITHUB_EVENT_NAME === "workflow_dispatch";
 
   for (const account of ACCOUNTS) {
     if (!account.accountToken || !account.skGameRole) {
@@ -375,23 +380,39 @@ async function main() {
     );
 
     if (!result.ok) hasFailure = true;
+    if (result.msg === "출석 성공 (보상 수령됨)") hasNewSuccess = true;
+
+    // 자동 실행 + "이미 출석 완료"면 디스코드 전송을 건너뜀.
+    // 수동 실행이거나, 새로 출석 성공/실패했으면 항상 전송.
+    const isAlreadyDone = result.msg === "이미 출석 완료";
+    const shouldNotify = isManualRun || !isAlreadyDone;
 
     if (account.discordWebhook) {
-      await sendDiscord(account.discordWebhook, result, account);
+      if (shouldNotify) {
+        await sendDiscord(account.discordWebhook, result, account);
 
-      // 웹훅 프로필(아바타/이름) 변경이 설정되어 있으면 적용 (같은 웹훅은 한 번만)
-      if (
-        (account.discordWebhookAvatarUrl || account.discordWebhookName) &&
-        !patchedWebhooks.has(account.discordWebhook)
-      ) {
-        await setWebhookProfile(account.discordWebhook, account.discordWebhookAvatarUrl, account.discordWebhookName);
-        patchedWebhooks.add(account.discordWebhook);
+        // 웹훅 프로필(아바타/이름) 변경이 설정되어 있으면 적용 (같은 웹훅은 한 번만)
+        if (
+          (account.discordWebhookAvatarUrl || account.discordWebhookName) &&
+          !patchedWebhooks.has(account.discordWebhook)
+        ) {
+          await setWebhookProfile(account.discordWebhook, account.discordWebhookAvatarUrl, account.discordWebhookName);
+          patchedWebhooks.add(account.discordWebhook);
+        }
+      } else {
+        console.log(`[${account.accountName}] 이미 완료 상태라 디스코드 전송을 건너뜁니다.`);
       }
     }
   }
 
   if (hasFailure) {
     process.exitCode = 1;
+  }
+
+  // 워크플로우가 "오늘 새로 출석 성공했는지" 알 수 있도록 GITHUB_OUTPUT에 기록
+  // (이걸 보고 워크플로우가 이전 날짜 캐시를 정리할지 결정함)
+  if (process.env.GITHUB_OUTPUT) {
+    fs.appendFileSync(process.env.GITHUB_OUTPUT, `had_new_success=${hasNewSuccess}\n`);
   }
 }
 

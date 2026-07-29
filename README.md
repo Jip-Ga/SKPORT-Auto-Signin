@@ -1,6 +1,6 @@
 # SKPORT 자동 출석 (GitHub 버전)
 
-### 현재 "명일방주: 엔드필드"만 지원합니다.
+### 현재 `명일방주: 엔드필드`만 지원합니다.
 
 **기능 업데이트 :** `2026-07-29`
 
@@ -9,7 +9,7 @@
 **검색 기능 : `Ctrl`+`F`**
 
 - AI 활용해서 깃허브에서 설정 시간마다 자동으로 출석 시도 하도록 바꾼 버전입니다.
-- **출석 시간 설정** 방법은 **맨 아래** [[#5. 출석 시간 설정](https://github.com/Jip-Ga/HoYoLAB-Auto-Checkin/blob/main/README.md#5-출석-시간-설정)] 을 참고하시면 됩니다.
+- **출석 시간 설정** 방법은 **맨 아래** [[#5. 출석 시간 설정](https://github.com/Jip-Ga/SKPORT-Auto-Signin/blob/main/README.md#5-출석-시간-설정)] 을 참고하시면 됩니다.
 - 계정 여러 개 등록해서 사용 가능합니다.
 
 
@@ -97,7 +97,7 @@
 
 
 ---
-## #1. 디스코드 웹훅 만들기 (메모장 작성 추천)
+## #1. 디스코드 웹훅 생성 (메모장 작성 추천)
 
 <details>
 
@@ -222,7 +222,7 @@ PC 화면에서만 웹후크 생성이 가능합니다.
 
 ## #3-1. 코드 설명 -『필수 입력』
 
-- **`"accountToken"`** = **`ACCOUNT_TOKEN`** `(로그인 토큰값)` ([[#2. 쿠키 값 얻기](https://github.com/Jip-Ga/HoYoLAB-Auto-Checkin/blob/main/README.md#2-쿠키-값-얻기-메모장-작성-추천)] 참고)
+- **`"accountToken"`** = **`ACCOUNT_TOKEN`** `(로그인 토큰값)` ([[#2. 토큰 값 얻기](https://github.com/Jip-Ga/SKPORT-Auto-Signin/blob/main/README.md#2-쿠키-값-얻기-메모장-작성-추천)] 참고)
 - **`"skGameRole"`** = 엔드필드 UID
 - **`"serverId"`** = 2(아시아 서버)
 
@@ -243,12 +243,14 @@ PC 화면에서만 웹후크 생성이 가능합니다.
 
 = 모든 계정의 값이 비어야 미사용
 
-- **`"NAME"`** = 계정 분류용
-    - <img width="200" height="352" alt="image" src="https://github.com/user-attachments/assets/2e422f67-370a-4751-ac85-6c9398e5147e" />
-- **`"AVATAR"`** = 웹훅 프로필
+- **`"accountName"`** = 계정 분류용 (미작성 시 "닉네임"으로 표기)
+    - <img width="507" height="358" alt="image" src="https://github.com/user-attachments/assets/3b424e43-8468-4625-9c1f-68a985625ff9" />
+- **`"discordWebhook"`** = 웹훅 URL ([[#1. 디스코드 웹훅 생성](https://github.com/Jip-Ga/SKPORT-Auto-Signin/blob/main/README.md#1-디스코드-웹훅-생성-메모장-작성-추천)] 참고)
+- **`"discordWebhookAvatarUrl"`** = 웹훅 프로필
     - 일단 저는 구글 드라이브에 1:1비율 이미지 올리고 공유 상태로 전환해 사용하고 있습니다.
         - [[Google Drive](https://drive.google.com/drive/my-drive)]
-- **`"DISCORD_WEBHOOK"`** = 웹훅 URL ([[#1. 디스코드 웹훅 만들기](https://github.com/Jip-Ga/HoYoLAB-Auto-Checkin/blob/main/README.md#1-디스코드-웹훅-만들기-메모장-작성-추천)] 참고)
+- **`"discordWebhookName"`** = 웹훅 이름
+
 
 </details>
 
@@ -271,7 +273,7 @@ PC 화면에서만 웹후크 생성이 가능합니다.
 ---
 ## #5. 출석 시간 설정
 
-HoYoLab 출석 가능 시간 : `한국시간(KST) 01:00` = `중국시간(CST) 00:00` = `UTC 16:00`
+SKPORT 출석 가능 시간 : `한국시간(KST) 01:00` = `중국시간(CST) 00:00` = `UTC 16:00`
 
 <details>
 <summary> 『기본 설정』 </summary>

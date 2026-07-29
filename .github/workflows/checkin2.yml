@@ -1,9 +1,16 @@
-name: 엔드필드 자동 출석
+name: SKPORT 자동 출석 (오후 8시~11시)
 
 on:
   schedule:
-    - cron: "0 0 * * *"   # 한국시간 오전 9시 (원하는 시간으로 수정 가능)
+    - cron: "0 11 * * *"   # 한국시간 20:00
+    - cron: "0 12 * * *"   # 한국시간 21:00
+    - cron: "0 13 * * *"   # 한국시간 22:00
+    - cron: "0 14 * * *"   # 한국시간 23:00
   workflow_dispatch: {}
+
+permissions:
+  contents: read
+  actions: write   # 오래된 캐시를 삭제하려면 필요한 권한
 
 jobs:
   checkin:
@@ -12,15 +19,48 @@ jobs:
       - name: 레포 체크아웃
         uses: actions/checkout@v4
 
+      - name: 오늘 날짜(한국시간) 구하기
+        id: date
+        run: echo "today=$(TZ='Asia/Seoul' date +'%Y-%m-%d')" >> "$GITHUB_OUTPUT"
+
+      - name: 오늘 성공 기록 확인 (실패해도 무시하고 계속 진행)
+        id: cache-check
+        continue-on-error: true
+        uses: actions/cache@v4
+        with:
+          path: .checkin-done
+          key: endfield-checkin-success-${{ steps.date.outputs.today }}
+
       - name: Node.js 설치
+        if: steps.cache-check.outputs.cache-hit != 'true' || github.event_name == 'workflow_dispatch'
         uses: actions/setup-node@v4
         with:
           node-version: "20"
 
       - name: 의존성 설치
+        if: steps.cache-check.outputs.cache-hit != 'true' || github.event_name == 'workflow_dispatch'
         run: npm install
 
       - name: 출석 체크 실행
+        id: run-checkin
+        if: steps.cache-check.outputs.cache-hit != 'true' || github.event_name == 'workflow_dispatch'
         env:
           ENDFIELD_CONFIG: ${{ secrets.ENDFIELD_CONFIG }}
         run: node index.js
+
+      - name: 오늘 성공 기록 저장
+        if: steps.cache-check.outputs.cache-hit != 'true' || github.event_name == 'workflow_dispatch'
+        run: echo "${{ steps.date.outputs.today }}" > .checkin-done
+
+      - name: 이전 날짜 캐시 정리 (오늘 새로 출석 성공했을 때만)
+        if: steps.run-checkin.outputs.had_new_success == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TODAY_KEY="endfield-checkin-success-${{ steps.date.outputs.today }}"
+          echo "오늘 캐시 키: $TODAY_KEY (이건 남기고, 나머지 날짜는 삭제합니다)"
+          gh cache list --key endfield-checkin-success- --json id,key --limit 100 \
+            --jq ".[] | select(.key != \"$TODAY_KEY\") | .id" | while read -r id; do
+              echo "🗑 오래된 캐시 삭제: $id"
+              gh cache delete "$id" || true
+            done

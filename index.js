@@ -15,16 +15,30 @@ import crypto from "crypto";
  * [설정 불러오기]
  * =========================================================================
  * 모든 값을 GitHub Secret "ENDFIELD_CONFIG" 하나에 JSON으로 등록해서 사용합니다.
- * 아래 형식 그대로 값만 채워서 Secret에 등록하세요:
+ * 계정을 여러 개 등록할 수 있고, 디스코드 관련 값(웹훅 URL/이름/프로필 이미지)이
+ * 빈칸인 계정은 자동으로 "마지막에 값이 채워진 계정"의 값을 가져다 씁니다.
  *
  * {
- *   "accountToken": "로그인 쿠키값",
- *   "accountName": "닉네임",
- *   "skGameRole": "인겜 UID",
- *   "serverId": "2",
- *   "discordWebhook": "디스코드 웹훅 URL",
- *   "discordWebhookAvatarUrl": "웹훅 프로필 이미지 URL",
- *   "discordWebhookName": "웹훅 이름"
+ *   "ACCOUNTS": [
+ *     {
+ *       "accountToken": "계정1 로그인 쿠키값",
+ *       "accountName": "계정1 닉네임",
+ *       "skGameRole": "계정1 인겜 UID",
+ *       "serverId": "2",
+ *       "discordWebhook": "디스코드 웹훅 URL",
+ *       "discordWebhookAvatarUrl": "웹훅 프로필 이미지 URL",
+ *       "discordWebhookName": "웹훅 이름"
+ *     },
+ *     {
+ *       "accountToken": "계정2 로그인 쿠키값",
+ *       "accountName": "계정2 닉네임",
+ *       "skGameRole": "계정2 인겜 UID",
+ *       "serverId": "2",
+ *       "discordWebhook": "",
+ *       "discordWebhookAvatarUrl": "",
+ *       "discordWebhookName": ""
+ *     }
+ *   ]
  * }
  */
 function loadConfig() {
@@ -40,28 +54,45 @@ function loadConfig() {
   } catch (e) {
     throw new Error("ENDFIELD_CONFIG 파싱 실패: JSON 형식이 올바른지 확인해주세요. " + e.message);
   }
-  return parsed;
+  if (!parsed || !Array.isArray(parsed.ACCOUNTS)) {
+    throw new Error('ENDFIELD_CONFIG의 "ACCOUNTS" 값이 배열이 아닙니다. 형식을 확인해주세요.');
+  }
+  return parsed.ACCOUNTS;
 }
 
-let CFG;
+let RAW_ACCOUNTS;
 try {
-  CFG = loadConfig();
+  RAW_ACCOUNTS = loadConfig();
 } catch (e) {
   console.error(e.message);
   process.exit(1);
 }
 
-const CONFIG = {
-  accountToken: CFG.accountToken || "",
-  accountName: CFG.accountName || "닉네임",
-  skGameRole: CFG.skGameRole || "",
-  serverId: CFG.serverId || "2"
-};
+// 디스코드 웹훅 URL/이름/프로필 이미지가 빈칸인 계정은
+// 배열 안에서 "마지막으로 값이 채워진" 계정의 값을 그대로 가져다 씁니다.
+function lastNonEmpty(list, key) {
+  for (let i = list.length - 1; i >= 0; i--) {
+    if (list[i][key]) return list[i][key];
+  }
+  return "";
+}
+
+const fallbackWebhook = lastNonEmpty(RAW_ACCOUNTS, "discordWebhook");
+const fallbackAvatar = lastNonEmpty(RAW_ACCOUNTS, "discordWebhookAvatarUrl");
+const fallbackName = lastNonEmpty(RAW_ACCOUNTS, "discordWebhookName");
+
+const ACCOUNTS = RAW_ACCOUNTS.map((acc) => ({
+  accountToken: acc.accountToken || "",
+  accountName: acc.accountName || "닉네임",
+  skGameRole: acc.skGameRole || "",
+  serverId: acc.serverId || "2",
+  discordWebhook: acc.discordWebhook || fallbackWebhook,
+  discordWebhookAvatarUrl: acc.discordWebhookAvatarUrl || fallbackAvatar,
+  discordWebhookName: acc.discordWebhookName || fallbackName
+}));
 
 // 디스코드 웹훅 설정
-const DISCORD_WEBHOOK = CFG.discordWebhook || "";
-const DISCORD_WEBHOOK_AVATAR_URL = CFG.discordWebhookAvatarUrl || "";
-const DISCORD_WEBHOOK_NAME = CFG.discordWebhookName || "";
+
 
 /* ───────────────────────────────────────────── */
 
@@ -285,9 +316,9 @@ async function setWebhookProfile(webhookUrl, avatarImageUrl, newName) {
   }
 }
 
-async function sendDiscord(result, cfg) {
+async function sendDiscord(webhook, result, cfg) {
   try {
-    const res = await fetch(DISCORD_WEBHOOK, {
+    const res = await fetch(webhook, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -324,30 +355,42 @@ async function main() {
     `\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n🪐 엔드필드 출석 시스템 가동\n📅 실행 시간 : ${t}\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`
   );
 
-  if (!CONFIG.accountToken || !CONFIG.skGameRole) {
-    console.error("❌ [오류] 설정(CONFIG) 값이 올바르지 않습니다. GitHub Secrets를 확인해주세요.");
-    process.exitCode = 1;
-    return;
+  let hasFailure = false;
+  // 같은 웹훅에 프로필(이름/아바타) 패치를 중복으로 여러 번 보내지 않기 위한 기록
+  const patchedWebhooks = new Set();
+
+  for (const account of ACCOUNTS) {
+    if (!account.accountToken || !account.skGameRole) {
+      console.error(`❌ [오류] "${account.accountName}" 계정의 설정 값이 올바르지 않습니다. GitHub Secret을 확인해주세요.`);
+      hasFailure = true;
+      continue;
+    }
+
+    const client = new EndfieldClient(account);
+    const result = await client.run();
+    const status = result.ok ? "✅" : "❌";
+
+    console.log(
+      `\n[ 실행 결과 : ${account.accountName} ] ──────────────────────────────────\n${status} 상 태   : ${result.msg}\n👤 관리자  : ${account.accountName} (UID: ${account.skGameRole})\n🎁 보 상   : ${result.rw || "없음"} (x${result.ct || 0})\n────────────────────────────────────────────────`
+    );
+
+    if (!result.ok) hasFailure = true;
+
+    if (account.discordWebhook) {
+      await sendDiscord(account.discordWebhook, result, account);
+
+      // 웹훅 프로필(아바타/이름) 변경이 설정되어 있으면 적용 (같은 웹훅은 한 번만)
+      if (
+        (account.discordWebhookAvatarUrl || account.discordWebhookName) &&
+        !patchedWebhooks.has(account.discordWebhook)
+      ) {
+        await setWebhookProfile(account.discordWebhook, account.discordWebhookAvatarUrl, account.discordWebhookName);
+        patchedWebhooks.add(account.discordWebhook);
+      }
+    }
   }
 
-  const client = new EndfieldClient(CONFIG);
-  const result = await client.run();
-  const status = result.ok ? "✅" : "❌";
-
-  console.log(
-    `\n[ 실행 결과 ] ──────────────────────────────────\n${status} 상 태   : ${result.msg}\n👤 관리자  : ${CONFIG.accountName} (UID: ${CONFIG.skGameRole})\n🎁 보 상   : ${result.rw || "없음"} (x${result.ct || 0})\n────────────────────────────────────────────────`
-  );
-
-  if (DISCORD_WEBHOOK) {
-    await sendDiscord(result, CONFIG);
-  }
-
-  // 웹훅 프로필(아바타/이름) 변경이 설정되어 있으면 적용
-  if (DISCORD_WEBHOOK && (DISCORD_WEBHOOK_AVATAR_URL || DISCORD_WEBHOOK_NAME)) {
-    await setWebhookProfile(DISCORD_WEBHOOK, DISCORD_WEBHOOK_AVATAR_URL, DISCORD_WEBHOOK_NAME);
-  }
-
-  if (!result.ok) {
+  if (hasFailure) {
     process.exitCode = 1;
   }
 }

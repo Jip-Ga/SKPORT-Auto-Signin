@@ -1,0 +1,358 @@
+/**
+ * ╔══════════════════════════════════════════════════════╗
+ * ║   🪐 엔드필드 자동 출석 시스템 (GitHub Actions 버전)   ║
+ * ╚══════════════════════════════════════════════════════╝
+ * 원본(Google Apps Script) : https://arca.live/b/akendfield/177104489
+ * 이 버전은 GitHub Actions에서 돌아가도록 Node.js로 변환한 버전입니다.
+ * 계정 정보는 코드에 직접 넣지 않고 GitHub Secrets에서 불러옵니다.
+ */
+
+import fetch from "node-fetch";
+import crypto from "crypto";
+
+/**
+ * =========================================================================
+ * [설정 불러오기]
+ * =========================================================================
+ * 모든 값을 GitHub Secret "ENDFIELD_CONFIG" 하나에 JSON으로 등록해서 사용합니다.
+ * 아래 형식 그대로 값만 채워서 Secret에 등록하세요:
+ *
+ * {
+ *   "accountToken": "로그인 쿠키값",
+ *   "accountName": "닉네임",
+ *   "skGameRole": "인겜 UID",
+ *   "serverId": "2",
+ *   "discordWebhook": "디스코드 웹훅 URL",
+ *   "discordWebhookAvatarUrl": "웹훅 프로필 이미지 URL",
+ *   "discordWebhookName": "웹훅 이름"
+ * }
+ */
+function loadConfig() {
+  const raw = process.env.ENDFIELD_CONFIG;
+  if (!raw) {
+    throw new Error(
+      "ENDFIELD_CONFIG 환경변수(Secret)가 설정되지 않았습니다. README를 참고해서 GitHub Secret을 등록해주세요."
+    );
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (e) {
+    throw new Error("ENDFIELD_CONFIG 파싱 실패: JSON 형식이 올바른지 확인해주세요. " + e.message);
+  }
+  return parsed;
+}
+
+let CFG;
+try {
+  CFG = loadConfig();
+} catch (e) {
+  console.error(e.message);
+  process.exit(1);
+}
+
+const CONFIG = {
+  accountToken: CFG.accountToken || "",
+  accountName: CFG.accountName || "닉네임",
+  skGameRole: CFG.skGameRole || "",
+  serverId: CFG.serverId || "2"
+};
+
+// 디스코드 웹훅 설정
+const DISCORD_WEBHOOK = CFG.discordWebhook || "";
+const DISCORD_WEBHOOK_AVATAR_URL = CFG.discordWebhookAvatarUrl || "";
+const DISCORD_WEBHOOK_NAME = CFG.discordWebhookName || "";
+
+/* ───────────────────────────────────────────── */
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function base64DecodeToString(s) {
+  return Buffer.from(s, "base64").toString("utf-8");
+}
+
+function md5Hex(str) {
+  return crypto.createHash("md5").update(str, "utf-8").digest("hex");
+}
+
+function hmacSha256Hex(message, key) {
+  return crypto.createHmac("sha256", key).update(message, "utf-8").digest("hex");
+}
+
+class EndfieldClient {
+  constructor(cfg) {
+    this.cfg = cfg;
+    try {
+      this.cfg.accountToken = decodeURIComponent(this.cfg.accountToken);
+    } catch (e) {
+      /* 그대로 사용 */
+    }
+    this.role = `3_${this.cfg.skGameRole}_${this.cfg.serverId || "2"}`;
+    this.baseUrl = base64DecodeToString("aHR0cHM6Ly96b25haS5za3BvcnQuY29tL3dlYi92MQ==");
+    this.authUrl = base64DecodeToString("aHR0cHM6Ly9hcy5ncnlwaGxpbmUuY29t");
+  }
+
+  async run() {
+    try {
+      console.log("🔄 인증 정보 갱신 중...");
+      const auth = await this._authenticate(this.cfg.accountToken);
+      const ts = Math.floor(Date.now() / 1000).toString();
+
+      const headers = {
+        Accept: "*/*",
+        "Accept-Encoding": "gzip, deflate, br, zstd",
+        "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
+        cred: auth.cred,
+        Origin: "https://game.skport.com",
+        platform: "3",
+        Referer: "https://game.skport.com/",
+        "sk-game-role": this.role,
+        "sk-language": "ko",
+        timestamp: ts,
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
+        vname: "1.0.0"
+      };
+
+      const url = `${this.baseUrl}/game/endfield/attendance`;
+
+      // 1. GET 요청 (오늘 출석 여부 확인)
+      headers.sign = this._sign1(ts, auth.cred);
+      const getRes = await fetch(url, { method: "GET", headers });
+
+      // 방화벽(WAF) 쿠키 장착
+      const setCookie = getRes.headers.raw()["set-cookie"];
+      if (setCookie && setCookie.length > 0) {
+        headers.Cookie = setCookie.join("; ");
+        console.log("🍪 보안 쿠키(WAF) 장착 완료");
+      }
+
+      const getJson = await getRes.json();
+      if (getJson.code === 0 && getJson.data && getJson.data.hasToday) {
+        return this._parseResult(getJson, "이미 출석 완료");
+      }
+
+      console.log("🎁 출석 보상 수령 시도...");
+      headers.sign = auth.token
+        ? this._sign2("/web/v1/game/endfield/attendance", ts, auth.token)
+        : this._sign1(ts, auth.cred);
+
+      const postRes = await fetch(url, {
+        method: "POST",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: ""
+      });
+      const postJson = await postRes.json();
+      if (postJson.code !== 0) {
+        return { ok: false, msg: `요청 실패 (코드: ${postJson.code}, 메시지: ${postJson.message})` };
+      }
+
+      await sleep(1500);
+      headers.sign = this._sign1(ts, auth.cred);
+      const finalRes = await fetch(url, { method: "GET", headers });
+      const finalJson = await finalRes.json();
+      return this._parseResult(finalJson, "출석 성공 (보상 수령됨)");
+    } catch (e) {
+      return { ok: false, msg: `오류: ${e.message}` };
+    }
+  }
+
+  async _authenticate(token) {
+    const r1 = await fetch(`${this.authUrl}/user/info/v1/basic?token=${encodeURIComponent(token)}`);
+    const d1 = await r1.json();
+    if (d1.status !== 0) throw new Error("토큰 오류");
+
+    const r2 = await fetch(`${this.authUrl}/user/oauth2/v2/grant`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token, appCode: "6eb76d4e13aa36e6", type: 0 })
+    });
+    const d2 = await r2.json();
+    if (d2.status !== 0) throw new Error("인증 실패 (Step 2)");
+
+    const r3 = await fetch(`${this.baseUrl}/user/auth/generate_cred_by_code`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", platform: "3" },
+      body: JSON.stringify({ code: d2.data.code, kind: 1 })
+    });
+    const d3 = await r3.json();
+    if (d3.code !== 0) throw new Error("인증 실패 (Step 3)");
+
+    return { cred: d3.data.cred, token: d3.data.token };
+  }
+
+  _sign1(ts, cred) {
+    return md5Hex(`timestamp=${ts}&cred=${cred}`);
+  }
+
+  _sign2(path, ts, token) {
+    const combined = path + ts + JSON.stringify({ platform: "3", timestamp: ts, dId: "", vName: "1.0.0" });
+    const hmac = hmacSha256Hex(combined, token);
+    return md5Hex(hmac);
+  }
+
+  _parseResult(data, defaultMsg) {
+    let rewardName = "알 수 없음";
+    let count = "0";
+    let icon = "";
+    if (data.code === 0 && data.data && data.data.calendar) {
+      const done = data.data.calendar.filter((x) => x.done).pop();
+      if (done) {
+        const info = data.data.resourceInfoMap[done.awardId];
+        if (info) {
+          rewardName = info.name;
+          count = info.count;
+          icon = info.icon;
+        }
+      }
+    }
+    return { ok: true, msg: defaultMsg, rw: rewardName, ct: count, ic: icon };
+  }
+}
+
+/**
+ * 구글 드라이브 공유 링크를 이미지 다이렉트 링크로 변환합니다.
+ */
+function toDirectImageUrl(url) {
+  const m1 = url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  const m2 = url.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+  const id = (m1 && m1[1]) || (m2 && m2[1]);
+  if (!id) return url;
+  // thumbnail 엔드포인트가 공유 설정과 무관하게 가장 안정적으로 이미지 바이트를 반환합니다.
+  return `https://drive.google.com/thumbnail?id=${id}&sz=w512`;
+}
+
+/**
+ * 디스코드 웹훅의 프로필(아바타/이름)을 영구적으로 변경합니다.
+ */
+async function setWebhookProfile(webhookUrl, avatarImageUrl, newName) {
+  try {
+    const m = webhookUrl.match(/webhooks\/(\d+)\/([^/?]+)/);
+    if (!m) {
+      console.log("❌ [웹훅 프로필] 웹훅 URL 형식이 올바르지 않습니다.");
+      return false;
+    }
+    const [, webhookId, webhookToken] = m;
+    const patchUrl = `https://discord.com/api/webhooks/${webhookId}/${webhookToken}`;
+
+    const body = {};
+    if (newName) body.name = newName;
+
+    if (avatarImageUrl) {
+      const directUrl = toDirectImageUrl(avatarImageUrl);
+      if (directUrl !== avatarImageUrl) {
+        console.log(`🔗 [웹훅 프로필] 구글 드라이브 링크 감지 → 다이렉트 링크로 변환: ${directUrl}`);
+      }
+      const imgRes = await fetch(directUrl, { redirect: "follow" });
+      const mimeType = imgRes.headers.get("content-type") || "";
+
+      if (!imgRes.ok || mimeType.indexOf("image/") !== 0) {
+        console.log(
+          `⚠️ [웹훅 프로필] 이미지 가져오기 실패 - 아바타는 건너뜁니다. (코드: ${imgRes.status}, content-type: ${mimeType})`
+        );
+        if (mimeType.indexOf("text/html") === 0) {
+          console.log(
+            "⚠️ [웹훅 프로필] HTML 응답이 왔습니다. 구글 드라이브 파일이 '링크가 있는 모든 사용자'로 공개 공유되어 있는지 확인하세요."
+          );
+        }
+      } else {
+        const buf = Buffer.from(await imgRes.arrayBuffer());
+        body.avatar = `data:${mimeType};base64,${buf.toString("base64")}`;
+      }
+    }
+
+    if (Object.keys(body).length === 0) {
+      console.log("ℹ️ [웹훅 프로필] 변경할 값이 없어 건너뜁니다.");
+      return false;
+    }
+
+    const resp = await fetch(patchUrl, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    });
+
+    if (resp.ok) {
+      console.log(`✅ [웹훅 프로필] 변경 완료 (${Object.keys(body).join(", ")})`);
+      return true;
+    } else {
+      console.log(`❌ [웹훅 프로필] 변경 실패 (코드: ${resp.status}, 응답: ${await resp.text()})`);
+      return false;
+    }
+  } catch (e) {
+    console.log(`❌ [웹훅 프로필] 오류: ${e.message}`);
+    return false;
+  }
+}
+
+async function sendDiscord(result, cfg) {
+  try {
+    const res = await fetch(DISCORD_WEBHOOK, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        embeds: [
+          {
+            title: result.ok ? "🛰️ 시스템 보고: 작전 성공" : "⚠️ 시스템 보고: 작전 실패",
+            description: "**일일 보급품 수령 보고서**",
+            color: result.ok ? 5763719 : 15548997,
+            fields: [
+              { name: "👤 관리자", value: cfg.accountName, inline: true },
+              { name: "🆔 UID", value: `\`${cfg.skGameRole}\``, inline: true },
+              { name: "📦 획득 보상", value: `**${result.rw}** (x${result.ct})`, inline: false },
+              { name: "📝 상세 결과", value: result.msg, inline: false }
+            ],
+            thumbnail: { url: result.ic || "" },
+            footer: { text: `Endfield Daily Helper • ${new Date().toISOString().split("T")[0]}` }
+          }
+        ]
+      })
+    });
+    if (res.ok) {
+      console.log("🔔 디스코드 알림 전송 완료.");
+    } else {
+      console.log(`🔕 디스코드 전송 실패 (코드: ${res.status})`);
+    }
+  } catch (e) {
+    console.log("🔕 디스코드 전송 실패:", e.message);
+  }
+}
+
+async function main() {
+  const t = new Date().toLocaleString();
+  console.log(
+    `\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n🪐 엔드필드 출석 시스템 가동\n📅 실행 시간 : ${t}\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`
+  );
+
+  if (!CONFIG.accountToken || !CONFIG.skGameRole) {
+    console.error("❌ [오류] 설정(CONFIG) 값이 올바르지 않습니다. GitHub Secrets를 확인해주세요.");
+    process.exitCode = 1;
+    return;
+  }
+
+  const client = new EndfieldClient(CONFIG);
+  const result = await client.run();
+  const status = result.ok ? "✅" : "❌";
+
+  console.log(
+    `\n[ 실행 결과 ] ──────────────────────────────────\n${status} 상 태   : ${result.msg}\n👤 관리자  : ${CONFIG.accountName} (UID: ${CONFIG.skGameRole})\n🎁 보 상   : ${result.rw || "없음"} (x${result.ct || 0})\n────────────────────────────────────────────────`
+  );
+
+  if (DISCORD_WEBHOOK) {
+    await sendDiscord(result, CONFIG);
+  }
+
+  // 웹훅 프로필(아바타/이름) 변경이 설정되어 있으면 적용
+  if (DISCORD_WEBHOOK && (DISCORD_WEBHOOK_AVATAR_URL || DISCORD_WEBHOOK_NAME)) {
+    await setWebhookProfile(DISCORD_WEBHOOK, DISCORD_WEBHOOK_AVATAR_URL, DISCORD_WEBHOOK_NAME);
+  }
+
+  if (!result.ok) {
+    process.exitCode = 1;
+  }
+}
+
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

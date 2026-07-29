@@ -1,0 +1,26 @@
+name: 엔드필드 자동 출석
+
+on:
+  schedule:
+    - cron: "0 0 * * *"   # 한국시간 오전 9시 (원하는 시간으로 수정 가능)
+  workflow_dispatch: {}
+
+jobs:
+  checkin:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 레포 체크아웃
+        uses: actions/checkout@v4
+
+      - name: Node.js 설치
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: 의존성 설치
+        run: npm install
+
+      - name: 출석 체크 실행
+        env:
+          ENDFIELD_CONFIG: ${{ secrets.ENDFIELD_CONFIG }}
+        run: node index.js

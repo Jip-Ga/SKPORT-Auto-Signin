@@ -1,0 +1,9 @@
+{
+  "accountToken": "로그인 쿠키값",
+  "accountName": "닉네임",
+  "skGameRole": "인겜 UID",
+  "serverId": "2",
+  "discordWebhook": "디스코드 웹훅 URL",
+  "discordWebhookAvatarUrl": "웹훅 프로필 이미지 URL",
+  "discordWebhookName": "웹훅 이름"
+}

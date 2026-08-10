@@ -84,6 +84,23 @@ function hmacSha256Hex(message, key) {
   return crypto.createHmac("sha256", key).update(message, "utf-8").digest("hex");
 }
 
+/**
+ * fetch 응답을 JSON으로 파싱하되, 실패하면(HTML 에러 페이지가 온 경우 등)
+ * "어느 단계에서, HTTP 상태 코드가 몇이고, 응답이 어떻게 시작하는지"를
+ * 로그로 남겨서 나중에 디버깅하기 쉽게 만듭니다.
+ */
+async function safeParseJson(res, stepName) {
+  const text = await res.text();
+  try {
+    return JSON.parse(text);
+  } catch (e) {
+    const preview = text.slice(0, 200).replace(/\s+/g, " ");
+    console.error(`⚠️ [${stepName}] JSON 파싱 실패 (HTTP ${res.status})`);
+    console.error(`⚠️ [${stepName}] 응답 미리보기: ${preview}`);
+    throw new Error(`[${stepName}] 응답이 JSON이 아닙니다 (HTTP ${res.status})`);
+  }
+}
+
 class EndfieldClient {
   constructor(cfg) {
     this.cfg = cfg;
@@ -132,7 +149,7 @@ class EndfieldClient {
         console.log("🍪 보안 쿠키(WAF) 장착 완료");
       }
 
-      const getJson = await getRes.json();
+      const getJson = await safeParseJson(getRes, "출석 여부 확인(GET)");
       if (getJson.code === 0 && getJson.data && getJson.data.hasToday) {
         return this._parseResult(getJson, "이미 출석 완료");
       }
@@ -147,7 +164,7 @@ class EndfieldClient {
         headers: { ...headers, "Content-Type": "application/json" },
         body: ""
       });
-      const postJson = await postRes.json();
+      const postJson = await safeParseJson(postRes, "출석 보상 수령(POST)");
       if (postJson.code !== 0) {
         return { ok: false, msg: `요청 실패 (코드: ${postJson.code}, 메시지: ${postJson.message})` };
       }
@@ -155,7 +172,7 @@ class EndfieldClient {
       await sleep(1500);
       headers.sign = this._sign1(ts, auth.cred);
       const finalRes = await fetch(url, { method: "GET", headers });
-      const finalJson = await finalRes.json();
+      const finalJson = await safeParseJson(finalRes, "최종 결과 확인(GET)");
       return this._parseResult(finalJson, "출석 성공 (보상 수령됨)");
     } catch (e) {
       return { ok: false, msg: `오류: ${e.message}` };
@@ -164,7 +181,7 @@ class EndfieldClient {
 
   async _authenticate(token) {
     const r1 = await fetch(`${this.authUrl}/user/info/v1/basic?token=${encodeURIComponent(token)}`);
-    const d1 = await r1.json();
+    const d1 = await safeParseJson(r1, "인증 1단계(토큰 확인)");
     if (d1.status !== 0) throw new Error("토큰 오류");
 
     const r2 = await fetch(`${this.authUrl}/user/oauth2/v2/grant`, {
@@ -172,7 +189,7 @@ class EndfieldClient {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ token, appCode: "6eb76d4e13aa36e6", type: 0 })
     });
-    const d2 = await r2.json();
+    const d2 = await safeParseJson(r2, "인증 2단계(oauth grant)");
     if (d2.status !== 0) throw new Error("인증 실패 (Step 2)");
 
     const r3 = await fetch(`${this.baseUrl}/user/auth/generate_cred_by_code`, {
@@ -180,7 +197,7 @@ class EndfieldClient {
       headers: { "Content-Type": "application/json", platform: "3" },
       body: JSON.stringify({ code: d2.data.code, kind: 1 })
     });
-    const d3 = await r3.json();
+    const d3 = await safeParseJson(r3, "인증 3단계(cred 발급)");
     if (d3.code !== 0) throw new Error("인증 실패 (Step 3)");
 
     return { cred: d3.data.cred, token: d3.data.token };

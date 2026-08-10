@@ -15,6 +15,7 @@ permissions:
 jobs:
   checkin:
     runs-on: ubuntu-latest
+    timeout-minutes: 10   # 10분 넘게 실행되면 자동 취소
     steps:
       - name: 레포 체크아웃
         uses: actions/checkout@v4

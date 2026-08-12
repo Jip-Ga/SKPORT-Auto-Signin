@@ -85,6 +85,57 @@ function hmacSha256Hex(message, key) {
 }
 
 /**
+ * =========================================================================
+ * [WAF 보안 챌린지(acw_sc__v2) 자동 계산]
+ * =========================================================================
+ * 알리바바 클라우드 WAF가 자바스크립트 챌린지 페이지를 돌려줄 때,
+ * 그 안의 arg1 값으로 정답 쿠키(acw_sc__v2)를 계산합니다.
+ * (커뮤니티에 공개된, 여러 곳에서 검증된 알고리즘)
+ */
+const ACW_PERMUTATION = [
+  15, 35, 29, 24, 33, 16, 1, 38, 10, 9, 19, 31, 40, 27, 22, 23, 25, 13, 6, 11,
+  39, 18, 20, 8, 14, 21, 32, 26, 2, 30, 7, 4, 17, 5, 3, 28, 34, 37, 12, 36
+];
+const ACW_SALT = "3000176000856006061501533003690027800375";
+
+function acwUnsbox(s) {
+  const arr = new Array(ACW_PERMUTATION.length);
+  for (let j = 0; j < ACW_PERMUTATION.length; j++) {
+    arr[j] = s[ACW_PERMUTATION[j] - 1];
+  }
+  return arr.join("");
+}
+
+function acwHexXor(s1, s2) {
+  let result = "";
+  const len = Math.min(s1.length, s2.length);
+  for (let i = 0; i < len; i += 2) {
+    const a = parseInt(s1.slice(i, i + 2), 16);
+    const b = parseInt(s2.slice(i, i + 2), 16);
+    let hex = (a ^ b).toString(16);
+    if (hex.length === 1) hex = "0" + hex;
+    result += hex;
+  }
+  return result;
+}
+
+function computeAcwScV2(arg1) {
+  return acwHexXor(acwUnsbox(arg1), ACW_SALT);
+}
+
+/**
+ * WAF 챌린지 페이지(JSON이 아닌 HTML)를 만났을 때 던지는 전용 오류.
+ * 원본 응답 텍스트를 들고 있어서, 그 안의 arg1 값을 뽑아 자동으로 풀 수 있습니다.
+ */
+class WafChallengeError extends Error {
+  constructor(message, rawText) {
+    super(message);
+    this.name = "WafChallengeError";
+    this.rawText = rawText;
+  }
+}
+
+/**
  * fetch 응답을 JSON으로 파싱하되, 실패하면(HTML 에러 페이지가 온 경우 등)
  * "어느 단계에서, HTTP 상태 코드가 몇이고, 응답이 어떻게 시작하는지"를
  * 로그로 남겨서 나중에 디버깅하기 쉽게 만듭니다.
@@ -97,7 +148,7 @@ async function safeParseJson(res, stepName) {
     const preview = text.slice(0, 200).replace(/\s+/g, " ");
     console.error(`⚠️ [${stepName}] JSON 파싱 실패 (HTTP ${res.status})`);
     console.error(`⚠️ [${stepName}] 응답 미리보기: ${preview}`);
-    throw new Error(`[${stepName}] 응답이 JSON이 아닙니다 (HTTP ${res.status})`);
+    throw new WafChallengeError(`[${stepName}] 응답이 JSON이 아닙니다 (HTTP ${res.status})`, text);
   }
 }
 
@@ -112,6 +163,64 @@ class EndfieldClient {
     this.role = `3_${this.cfg.skGameRole}_${this.cfg.serverId || "2"}`;
     this.baseUrl = base64DecodeToString("aHR0cHM6Ly96b25haS5za3BvcnQuY29tL3dlYi92MQ==");
     this.authUrl = base64DecodeToString("aHR0cHM6Ly9hcy5ncnlwaGxpbmUuY29t");
+    this.extraCookies = {}; // WAF 챌린지를 풀면서 얻은 쿠키(acw_sc__v2 등)를 여기 계속 누적
+  }
+
+  /**
+   * 기존 쿠키 문자열에, 지금까지 풀어낸 챌린지 쿠키(this.extraCookies)를 덧붙입니다.
+   */
+  _buildCookieHeader(baseCookie = "") {
+    const extra = Object.entries(this.extraCookies)
+      .map(([k, v]) => `${k}=${v}`)
+      .join("; ");
+    return [baseCookie, extra].filter(Boolean).join("; ");
+  }
+
+  /**
+   * 응답에 Set-Cookie가 있으면 그 값들을 this.extraCookies에 흡수합니다.
+   */
+  _absorbSetCookie(res) {
+    const setCookie = res.headers.raw ? res.headers.raw()["set-cookie"] : null;
+    if (!setCookie || setCookie.length === 0) return;
+    for (const raw of setCookie) {
+      const [pair] = raw.split(";"); // "이름=값" 부분만 취함 (Path, Secure 등 속성 제외)
+      const eqIdx = pair.indexOf("=");
+      if (eqIdx === -1) continue;
+      const name = pair.slice(0, eqIdx).trim();
+      const value = pair.slice(eqIdx + 1).trim();
+      if (name) this.extraCookies[name] = value;
+    }
+  }
+
+  /**
+   * fetch + JSON 파싱을 한 번에 처리하고, 도중에 WAF 챌린지 페이지를 만나면
+   * arg1 값으로 acw_sc__v2를 자동 계산해서 쿠키에 저장한 뒤, 같은 요청을
+   * 그 자리에서 즉시 한 번 더 시도합니다. (계산한 쿠키는 이후 모든 요청에도 계속 재사용됨)
+   */
+  async _fetchJson(url, options, stepName) {
+    const headers = { ...(options.headers || {}) };
+    const baseCookie = headers.Cookie || headers.cookie || "";
+    headers.Cookie = this._buildCookieHeader(baseCookie);
+
+    const res = await fetch(url, { ...options, headers });
+    this._absorbSetCookie(res);
+    try {
+      return await safeParseJson(res, stepName);
+    } catch (e) {
+      if (!(e instanceof WafChallengeError)) throw e;
+
+      const match = e.rawText.match(/arg1\s*=\s*'([0-9A-Fa-f]+)'/);
+      if (!match) throw e; // 챌린지 페이지 형태가 예상과 다르면 그냥 실패 처리
+
+      const acwScV2 = computeAcwScV2(match[1]);
+      this.extraCookies.acw_sc__v2 = acwScV2;
+      console.log(`🔐 [${stepName}] 보안 챌린지 자동 계산 완료 → 같은 요청 즉시 재시도`);
+
+      const retryHeaders = { ...headers, Cookie: this._buildCookieHeader(baseCookie) };
+      const retryRes = await fetch(url, { ...options, headers: retryHeaders });
+      this._absorbSetCookie(retryRes);
+      return await safeParseJson(retryRes, `${stepName} (챌린지 해결 후 재시도)`);
+    }
   }
 
   async run() {
@@ -140,16 +249,7 @@ class EndfieldClient {
 
       // 1. GET 요청 (오늘 출석 여부 확인)
       headers.sign = this._sign1(ts, auth.cred);
-      const getRes = await fetch(url, { method: "GET", headers });
-
-      // 방화벽(WAF) 쿠키 장착
-      const setCookie = getRes.headers.raw()["set-cookie"];
-      if (setCookie && setCookie.length > 0) {
-        headers.Cookie = setCookie.join("; ");
-        console.log("🍪 보안 쿠키(WAF) 장착 완료");
-      }
-
-      const getJson = await safeParseJson(getRes, "출석 여부 확인(GET)");
+      const getJson = await this._fetchJson(url, { method: "GET", headers }, "출석 여부 확인(GET)");
       if (getJson.code === 0 && getJson.data && getJson.data.hasToday) {
         return this._parseResult(getJson, "이미 출석 완료");
       }
@@ -159,20 +259,18 @@ class EndfieldClient {
         ? this._sign2("/web/v1/game/endfield/attendance", ts, auth.token)
         : this._sign1(ts, auth.cred);
 
-      const postRes = await fetch(url, {
-        method: "POST",
-        headers: { ...headers, "Content-Type": "application/json" },
-        body: ""
-      });
-      const postJson = await safeParseJson(postRes, "출석 보상 수령(POST)");
+      const postJson = await this._fetchJson(
+        url,
+        { method: "POST", headers: { ...headers, "Content-Type": "application/json" }, body: "" },
+        "출석 보상 수령(POST)"
+      );
       if (postJson.code !== 0) {
         return { ok: false, msg: `요청 실패 (코드: ${postJson.code}, 메시지: ${postJson.message})` };
       }
 
       await sleep(1500);
       headers.sign = this._sign1(ts, auth.cred);
-      const finalRes = await fetch(url, { method: "GET", headers });
-      const finalJson = await safeParseJson(finalRes, "최종 결과 확인(GET)");
+      const finalJson = await this._fetchJson(url, { method: "GET", headers }, "최종 결과 확인(GET)");
       return this._parseResult(finalJson, "출석 성공 (보상 수령됨)");
     } catch (e) {
       return { ok: false, msg: `오류: ${e.message}` };
@@ -203,24 +301,33 @@ class EndfieldClient {
   }
 
   async _authenticate(token) {
-    const r1 = await fetch(`${this.authUrl}/user/info/v1/basic?token=${encodeURIComponent(token)}`);
-    const d1 = await safeParseJson(r1, "인증 1단계(토큰 확인)");
+    const d1 = await this._fetchJson(
+      `${this.authUrl}/user/info/v1/basic?token=${encodeURIComponent(token)}`,
+      { method: "GET" },
+      "인증 1단계(토큰 확인)"
+    );
     if (d1.status !== 0) throw new Error("토큰 오류");
 
-    const r2 = await fetch(`${this.authUrl}/user/oauth2/v2/grant`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token, appCode: "6eb76d4e13aa36e6", type: 0 })
-    });
-    const d2 = await safeParseJson(r2, "인증 2단계(oauth grant)");
+    const d2 = await this._fetchJson(
+      `${this.authUrl}/user/oauth2/v2/grant`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token, appCode: "6eb76d4e13aa36e6", type: 0 })
+      },
+      "인증 2단계(oauth grant)"
+    );
     if (d2.status !== 0) throw new Error("인증 실패 (Step 2)");
 
-    const r3 = await fetch(`${this.baseUrl}/user/auth/generate_cred_by_code`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", platform: "3" },
-      body: JSON.stringify({ code: d2.data.code, kind: 1 })
-    });
-    const d3 = await safeParseJson(r3, "인증 3단계(cred 발급)");
+    const d3 = await this._fetchJson(
+      `${this.baseUrl}/user/auth/generate_cred_by_code`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", platform: "3" },
+        body: JSON.stringify({ code: d2.data.code, kind: 1 })
+      },
+      "인증 3단계(cred 발급)"
+    );
     if (d3.code !== 0) throw new Error("인증 실패 (Step 3)");
 
     return { cred: d3.data.cred, token: d3.data.token };

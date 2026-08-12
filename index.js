@@ -179,6 +179,29 @@ class EndfieldClient {
     }
   }
 
+  /**
+   * run()을 실행하다가 WAF 챌린지 페이지(JSON이 아닌 응답)를 만나서 실패하면,
+   * 몇 초 기다렸다가 인증부터 다시 시도합니다. (최대 maxAttempts번)
+   * 쿠키 만료처럼 재시도해도 어차피 실패할 게 뻔한 오류는 바로 결과를 반환합니다.
+   */
+  async runWithRetry(maxAttempts = 3, delayMs = 8000) {
+    let lastResult = null;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      lastResult = await this.run();
+
+      if (lastResult.ok) return lastResult;
+
+      const isWafChallenge = lastResult.msg.includes("응답이 JSON이 아닙니다");
+      if (!isWafChallenge) return lastResult; // 재시도해도 소용없는 오류(쿠키 만료 등)는 바로 반환
+
+      if (attempt < maxAttempts) {
+        console.log(`⏳ 보안 챌린지 페이지 감지 → ${delayMs / 1000}초 대기 후 재시도 (${attempt}/${maxAttempts})`);
+        await sleep(delayMs);
+      }
+    }
+    return lastResult;
+  }
+
   async _authenticate(token) {
     const r1 = await fetch(`${this.authUrl}/user/info/v1/basic?token=${encodeURIComponent(token)}`);
     const d1 = await safeParseJson(r1, "인증 1단계(토큰 확인)");
@@ -362,7 +385,7 @@ async function main() {
     }
 
     const client = new EndfieldClient(account);
-    const result = await client.run();
+    const result = await client.runWithRetry();
     const status = result.ok ? "✅" : "❌";
 
     console.log(
